@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+
+import sys, argparse, re, subprocess
+from itertools import chain
+
+## DEFINE variables
+
+strindex = numindex = ()
+
+## parse NUMBER
+
+def parseNum(num):
+
+    # split by comma
+    return list(_catnum(num.split(",")))
+
+## internal function of parseNum
+
+def _catnum(num):
+    for x in num:
+        if ':' in x:
+            R = [int(n) for n in x.split(':')]
+            for n in range(R[0], R[-1] + 1):
+                yield n
+        else:
+            yield int(x)
+
+## parse REGEXP
+
+def parseRegexp(fn, patterns, separator, encoding):
+
+    ## read file
+    with open(fn, "r", encoding=encoding) as rf:
+        header = rf.readline().strip("\n").split(separator)
+
+    ## judge
+    return _judge(header, patterns)
+
+## internal function of parseRegexp
+
+def _judge(header, patterns):
+    
+    for pattern in patterns:
+        for i, name in enumerate(header):
+            if re.search(pattern, name):
+                yield i + 1
+
+## exclude duplicated num
+
+def excdup(numlist):
+
+    storebox = set()
+    for x in numlist:
+        if x not in storebox:
+            storebox.add(x)
+            yield x
+
+## call an awk script
+
+def awkscript(index, separator, path):
+
+    trg = ",".join("$%d" % x for x in index) 
+    awk = 'BEGIN {FS="' + separator + \
+            '"; OFS="' + separator + \
+            '"} {print ' + trg + '}'
+    subprocess.call(("awk", awk, path))
+
+
+if __name__ == "__main__": 
+
+    p = argparse.ArgumentParser()
+
+    ## file name
+    p.add_argument("file",
+            help="file name")
+    
+    ## encoding
+    p.add_argument("-s", dest="sjis",
+            action="store_true", default=False,
+            help="set encoding to SJIS-DOS")
+    
+    ## separator
+    p.add_argument("-t", dest="tab",
+            action="store_true", default=False,
+            help=r"set separator to \\t (default ,)")
+    
+    ## numbers
+    p.add_argument("-n", dest="number",
+            help="set NUMBER")
+    
+    ## regexp
+    p.add_argument("-e",
+            nargs="+", # support multi args
+            dest="regexp",
+            help="set regexp PATTERN")
+    
+    
+    args = p.parse_args()
+
+    ## define variables
+
+    en = "cp932" if args.sjis else "utf8"
+    sp = "\t" if args.tab else ","
+
+    ## parse pattern and number
+
+    if args.regexp:
+        strindex = parseRegexp(args.file, 
+                patterns=args.regexp,
+                encoding=en, separator=sp)
+
+    if args.number:
+        numindex = parseNum(args.number)
+
+    target = excdup(chain(numindex, strindex))
+
+    ## call awk scripts
+    awkscript(target, sp, args.file)
